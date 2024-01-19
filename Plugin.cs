@@ -17,9 +17,10 @@ namespace LethalSharedSuits
         private const string modGUID = "pattyjogal.LethalSuits";
         private const string modName = "Lethal Suits";
         private const string modVersion = "0.1.0";
+        private static readonly string configBasePath = Path.Combine(Paths.ConfigPath, "suits");
         private static readonly string modBasePath = Path.Combine(Paths.PluginPath, "lethal-suits");
         private static readonly string suitsBasePath = Path.Combine(modBasePath, "suits");
-        private static readonly string friendsSuitsBasePath = Path.Combine(modBasePath, "friends");
+        private static readonly string friendsSuitsBasePath = Path.Combine(configBasePath, "friends");
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -98,6 +99,11 @@ namespace LethalSharedSuits
                 UnlockableItem originalSuit = new UnlockableItem();
                 try
                 {
+                    if (!Directory.Exists(configBasePath))
+                    {
+                        Directory.CreateDirectory(configBasePath);
+                    }
+
                     if (!Directory.Exists(modBasePath))
                     {
                         Directory.CreateDirectory(modBasePath);
@@ -113,6 +119,11 @@ namespace LethalSharedSuits
                         Directory.CreateDirectory(friendsSuitsBasePath);
                     }
 
+                    if (!File.Exists(Path.Combine(configBasePath, "suits.txt")))
+                    {
+                        File.Create(Path.Combine(configBasePath, "suits.txt"));
+                    }
+
                     if (!SuitsAdded) // we only need to add the new suits to the unlockables list once per game launch
                     {
                         int addedSuitCount = 0;
@@ -120,7 +131,7 @@ namespace LethalSharedSuits
 
                         // Install any suits not currently present
                         List<string> configs = [.. Directory.GetFiles(friendsSuitsBasePath)];
-                        configs.Add(Path.Combine(modBasePath, "suits.txt"));
+                        configs.Add(Path.Combine(configBasePath, "suits.txt"));
                         List<string> configuredSuits = configs.SelectMany(GetSuitsFromConfig).ToList();
                         List<string> suitsToInstall = GetUninstalledSuits(configuredSuits);
                         suitsToInstall.ForEach(Debug.Log);
@@ -295,6 +306,16 @@ namespace LethalSharedSuits
                                 }
                                 else
                                 {
+                                    bool isOwnSuit = GetSuitsFromConfig(Path.Combine(configBasePath, "suits.txt")).Contains(newSuit.unlockableName);
+                                    Debug.Log($"Truth for {newSuit.unlockableName}: {GetSuitsFromConfig(Path.Combine(configBasePath, "suits.txt")).Contains(newSuit.unlockableName)}");
+                                    newSuit.alreadyUnlocked = isOwnSuit;
+                                    newSuit.hasBeenUnlockedByPlayer = isOwnSuit;
+                                    if (!isOwnSuit)
+                                    {
+                                        newSuit.placedPosition = Vector3.zero;
+                                        newSuit.placedRotation = Vector3.zero;
+                                        newSuit.unlockableType = 753; // this unlockable type is not used
+                                    }
                                     __instance.unlockablesList.unlockables.Add(newSuit);
                                     addedSuitCount++;
                                 }
@@ -327,13 +348,15 @@ namespace LethalSharedSuits
             [HarmonyPrefix]
             static bool PositionSuitsOnRackPatch(ref StartOfRound __instance)
             {
-                List<string> mySuits = GetSuitsFromConfig(Path.Combine(modBasePath, "suits.txt"));
+                List<string> mySuits = GetSuitsFromConfig(Path.Combine(configBasePath, "suits.txt"));
 
                 List<UnlockableSuit> suits = UnityEngine.Object.FindObjectsOfType<UnlockableSuit>().ToList<UnlockableSuit>();
                 suits = suits.OrderBy(suit => suit.syncedSuitID.Value).ToList();
                 int index = 0;
-                foreach (UnlockableSuit suit in suits.Where(suit => mySuits.Contains(suit.name)))
+                suits.ForEach(suit => Debug.Log($"XXXXXXXXXXXXXXXXXXXX {suit}"));
+                foreach (UnlockableSuit suit in suits)
                 {
+                    Debug.Log($"Placing {suit.suitID} suit");
                     AutoParentToShip component = suit.gameObject.GetComponent<AutoParentToShip>();
                     component.overrideOffset = true;
 
